@@ -1955,6 +1955,10 @@
                 </div>
             </div>
             <div class="modal-footer">
+                <!-- Tombol hapus hanya untuk admin -->
+                <div id="modalDeleteContainer" style="display:none;margin-right:auto;">
+                    <button class="btn btn-danger btn-sm" onclick="hapusDariModal()"><i class="fas fa-trash"></i> Hapus</button>
+                </div>
                 <button class="btn btn-secondary btn-sm" onclick="closeEditModal()">Batal</button>
                 <button class="btn btn-primary btn-sm" onclick="submitUpdate()" id="modalSaveBtn"><i class="fas fa-save"></i> Simpan</button>
             </div>
@@ -2057,7 +2061,6 @@
 
         // ===== FUNGSI HITUNG JUMLAH HARI =====
         function editHitungJumlahHari() {
-            // Hanya admin yang bisa memicu perhitungan ini
             if (!isAdmin) return;
             var tglTerima = document.getElementById('modalTglTerimaPart').value;
             var docId = document.getElementById('modalRowIndex').value;
@@ -2447,9 +2450,6 @@
             }
             if (parseInt(d['QTY']) < 1) { showToast('QTY harus minimal 1!', 'error'); return; }
 
-            var tglTerima = '';
-            var jumlah = '';
-
             var sb = document.getElementById('submitBtn'),
                 fl2 = document.getElementById('formLoading');
             sb.disabled = true;
@@ -2474,8 +2474,8 @@
                     'NO. HP': d['NO. HP'],
                     'Tgl Order': '',
                     'No. Order': orderNo,
-                    'TGL TERIMA PART': tglTerima,
-                    'JUMLAH': jumlah,
+                    'TGL TERIMA PART': '',
+                    'JUMLAH': '',
                     'ORDER KE PABRIK': d['ORDER KE PABRIK'] || '',
                     'Keterangan Pemenuhan': '',
                     'createdAt': firebase.firestore.FieldValue.serverTimestamp(),
@@ -2680,7 +2680,10 @@
                     jml = o['JUMLAH'] || '',
                     op = o['ORDER KE PABRIK'] || '',
                     k = o['Keterangan Pemenuhan'] || '',
-                    da = 'onclick="openEditModal(\'' + o._docId + '\')"';
+                    da = 'onclick="openEditModal(\'' + o._docId + '\')"',
+                    delBtn = isAdmin ? '<button class="action-btn delete" onclick="confirmDelete(\'' + o._docId +
+                    '\')"><i class="fas fa-trash"></i></button>' :
+                    '<button class="action-btn locked" title="Hanya Admin yang bisa menghapus"><i class="fas fa-trash"></i></button>';
 
                 h += '<tr class="' + (isNew ? 'new-row' : '') + '">' +
                     '<td>' + (i + 1) + '</td>' +
@@ -2708,7 +2711,7 @@
                     escapeHtml(op || '-') + '</td>' +
                     '<td class="editable-cell" ' + da + '>' + escapeHtml(k || '-') + '</td>' +
                     '<td><div class="action-btns"><button class="action-btn" ' + da +
-                    '><i class="fas fa-pen"></i></button><button class="action-btn locked" title="Hanya FINISH bisa dihapus"><i class="fas fa-trash"></i></button></div></td>' +
+                    '><i class="fas fa-pen"></i></button>' + delBtn + '</div></td>' +
                     '</tr>';
             }
             tb.innerHTML = h;
@@ -2849,10 +2852,9 @@
 
             document.getElementById('modalRowIndex').value = docId;
 
-            // Set status (semua user bisa lihat dan ubah)
+            // Set status
             document.getElementById('modalStatus').value = (o['STATUS'] || 'PENDING').toUpperCase();
 
-            // Ambil referensi elemen
             var adminFields = document.getElementById('adminOnlyFields');
             var userMsg = document.getElementById('userOnlyMessage');
 
@@ -2862,25 +2864,25 @@
             var orderPabrikEl = document.getElementById('modalOrderPabrik');
             var keteranganEl = document.getElementById('modalKeterangan');
 
-            // Isi nilai semua field (admin & non-admin sama-sama melihat data)
+            // Isi nilai
             tglOrderEl.value = o['Tgl Order'] || '';
             tglTerimaEl.value = o['TGL TERIMA PART'] || '';
             jumlahEl.value = o['JUMLAH'] || '';
             orderPabrikEl.value = o['ORDER KE PABRIK'] || '';
             keteranganEl.value = o['Keterangan Pemenuhan'] || '';
 
+            // Tampilkan tombol hapus jika admin
+            var delContainer = document.getElementById('modalDeleteContainer');
             if (isAdmin) {
-                // Admin: semua field aktif & terlihat
                 adminFields.style.display = 'block';
                 userMsg.style.display = 'none';
                 tglOrderEl.disabled = false;
                 tglTerimaEl.disabled = false;
-                // Jumlah tetap readonly (otomatis)
                 jumlahEl.readOnly = true;
                 orderPabrikEl.disabled = false;
                 keteranganEl.disabled = false;
+                delContainer.style.display = 'block';
             } else {
-                // Non-admin: field terlihat tapi dinonaktifkan
                 adminFields.style.display = 'block';
                 userMsg.style.display = 'block';
                 tglOrderEl.disabled = true;
@@ -2888,6 +2890,7 @@
                 jumlahEl.readOnly = true;
                 orderPabrikEl.disabled = true;
                 keteranganEl.disabled = true;
+                delContainer.style.display = 'none';
             }
 
             document.getElementById('modalOrderNo').textContent = '#' + (o['No. Order'] || '-');
@@ -2904,7 +2907,6 @@
                 'STATUS': status
             };
 
-            // Jika admin, tambahkan field lain
             if (isAdmin) {
                 var tglTerima = document.getElementById('modalTglTerimaPart').value;
                 var order = allOrders.find(function(o) { return o._docId === docId; });
@@ -2947,9 +2949,22 @@
             });
         }
 
+        // ===== HAPUS DARI MODAL =====
+        function hapusDariModal() {
+            var docId = document.getElementById('modalRowIndex').value;
+            var order = allOrders.find(function(o) { return o._docId === docId; });
+            if (!order) return;
+            if (!isAdmin) {
+                showToast('Hanya Admin yang bisa menghapus.', 'warning');
+                return;
+            }
+            closeEditModal();
+            confirmDelete(docId);
+        }
+
         // ===== DELETE =====
         function confirmDelete(docId) {
-            if (!isAdmin) { showToast('Hanya Admin yang bisa menghapus data riwayat.', 'warning'); return; }
+            if (!isAdmin) { showToast('Hanya Admin yang bisa menghapus data.', 'warning'); return; }
             var o = allOrders.find(function(x) { return x._docId === docId; });
             if (!o) return;
             var em = document.getElementById('deleteConfirmModal');
@@ -2960,7 +2975,7 @@
             ov.innerHTML =
                 '<div class="modal" style="max-width:380px;"><div class="modal-header"><h3 style="color:var(--danger);"><i class="fas fa-exclamation-triangle" style="margin-right:8px;"></i>Hapus Order</h3><button class="modal-close" onclick="closeDeleteModal()"><i class="fas fa-times"></i></button></div><div class="modal-body"><p style="color:var(--text-secondary);">Yakin hapus order <strong style="color:var(--accent);">#' +
                 escapeHtml(o['No. Order'] || '-') +
-                '</strong> dari riwayat?</p></div><div class="modal-footer"><button class="btn btn-secondary btn-sm" onclick="closeDeleteModal()">Batal</button><button class="btn btn-danger btn-sm" id="confirmDeleteBtn"><i class="fas fa-trash"></i> Hapus</button></div></div>';
+                '</strong>?</p></div><div class="modal-footer"><button class="btn btn-secondary btn-sm" onclick="closeDeleteModal()">Batal</button><button class="btn btn-danger btn-sm" id="confirmDeleteBtn"><i class="fas fa-trash"></i> Hapus</button></div></div>';
             document.body.appendChild(ov);
             ov.addEventListener('click', function(e) { if (e.target === ov) closeDeleteModal(); });
             document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
@@ -3073,7 +3088,7 @@
         document.getElementById('inputModal').addEventListener('click', function(e) { if (e.target === this) closeInputModal(); });
         document.getElementById('editModal').addEventListener('click', function(e) { if (e.target === this) closeEditModal(); });
 
-        console.log('✅ Aplikasi siap - User hanya bisa ubah status, Admin edit semua field.');
+        console.log('✅ Aplikasi siap - Admin dapat menghapus order dari modal Edit dan tabel Aktif.');
     </script>
 </body>
 </html>
